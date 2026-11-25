@@ -226,15 +226,17 @@ def is_locked(path):
         return True
 
 
-def get_status(path):
+def get_status(path, extra_gates=None):
     """('patched'|'unpatched'|'unknown', None) — без исключений наружу.
-    'patched' только если ВСЕ гейты применены."""
+    'patched' только если ВСЕ гейты применены. extra_gates позволяет
+    VS Code-профилю дополнительно проверять авторизацию hub-режима."""
     if not path or not os.path.isfile(path):
         return ("unknown", None)
+    gates = ALL_GATES + list(extra_gates or ())
     try:
         with _mapped(path) as d:
             states = []
-            for gate, _ in ALL_GATES:
+            for gate, _ in gates:
                 try:
                     for state, _offsets, _g in gate.resolve_all(d):
                         states.append(state)
@@ -249,18 +251,21 @@ def get_status(path):
         return ("unknown", None)
 
 
-def is_already_patched(path):
+def is_already_patched(path, extra_gates=None):
     """Совместимый с IDE/asar интерфейс: True только если патч уже применён."""
-    return get_status(path)[0] == "patched"
+    return get_status(path, extra_gates=extra_gates)[0] == "patched"
 
 
-def _make_backup(path):
+def _make_backup(path, preserve_existing=False):
     """Снимок чистого файла как <path>.agybak.
     Вызывается только когда файл unpatched — живые байты это pristine-оригинал.
     Бэкап, не совпадающий с файлом, устарел (приложение автообновилось) —
-    обновляем его, а не храним."""
+    обновляем его, а не храним. Если хотя бы один gate уже пропатчен,
+    preserve_existing запрещает перезаписывать исходный бэкап промежуточным состоянием."""
     bak = path + BAK_EXT
     if os.path.exists(bak):
+        if preserve_existing:
+            return
         if filecmp.cmp(path, bak, shallow=False):
             return  # бэкап уже соответствует этому билду
         info(f"Backup is stale (app updated) — refreshing {os.path.basename(path)}{BAK_EXT}")
@@ -308,7 +313,7 @@ def _copy_to_user_bin(path):
         warn(f"Could not copy file to {dest_path}: {e}")
 
 
-def do_patch_agy(path):
+def do_patch_agy(path, extra_gates=None):
     from patcher.cli import confirmed
     from patcher.utils.captcha import confirm_with_captcha
 
@@ -317,6 +322,8 @@ def do_patch_agy(path):
         offer_download_and_block("Antigravity CLI")
         return
 
+    # Дополнительные гейты применяются в той же транзакции и с тем же бэкапом.
+    gates = ALL_GATES + list(extra_gates or ())
     hash_before = file_hash(path)
     info(f"Target: {color(path, COLOR_CYAN)}")
     hint(f"Size: {color(format_bytes(file_size(path)), COLOR_CYAN)}")
@@ -338,10 +345,11 @@ def do_patch_agy(path):
 
         # Сканируем в mmap, закрываем ДО записи (zero-copy scan)
         patches = []
+        has_patched_gate = False
         try:
             with _mapped(path) as d:
                 all_patched = True
-                for gate_obj, gate_label in ALL_GATES:
+                for gate_obj, gate_label in gates:
                     try:
                         matches = gate_obj.resolve_all(d)
                     except LookupError as e:
@@ -349,7 +357,9 @@ def do_patch_agy(path):
                         handle_patch_failure()
                         return
                     for kind, offsets, g in matches:
-                        if kind == "unpatched":
+                        if kind == "patched":
+                            has_patched_gate = True
+                        else:
                             all_patched = False
                             for off in offsets:
                                 patches.append((off, g))
@@ -359,7 +369,7 @@ def do_patch_agy(path):
                         return
                     # re-patch: перезаписываем все гейты
                     patches = []
-                    for gate_obj, _ in ALL_GATES:
+                    for gate_obj, _ in gates:
                         for _kind, offsets, g in gate_obj.resolve_all(d):
                             for off in offsets:
                                 patches.append((off, g))
@@ -371,7 +381,7 @@ def do_patch_agy(path):
             return
 
         try:
-            _make_backup(path)
+            _make_backup(path, preserve_existing=has_patched_gate)
         except (PermissionError, OSError) as e:
             err(f"Backup error: {e}")
             if sys.platform == "darwin":

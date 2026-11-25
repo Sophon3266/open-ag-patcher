@@ -58,6 +58,7 @@ from patcher.vscode.patcher import (
     is_already_patched as is_vscode_patched,
     do_patch_vscode,
     do_restore_vscode,
+    VSCODE_AGY_EXTRA_GATES,
 )
 
 
@@ -306,7 +307,7 @@ def print_target_info(main_js_path, manager_path="", agy_path="", vscode_path=""
     _kv("AGY Bin:", vscode_agy_path if vscode_agy_path else "Not found", COLOR_CYAN)
     if vscode_agy_path and os.path.isfile(vscode_agy_path):
         _kv("Status:", "found", COLOR_GREEN)
-        patched = is_agy_patched(vscode_agy_path)
+        patched = is_agy_patched(vscode_agy_path, extra_gates=VSCODE_AGY_EXTRA_GATES)
         _kv("Patch:", "already patched" if patched else "not patched",
             COLOR_YELLOW if patched else COLOR_GREEN)
         size = file_size(vscode_agy_path)
@@ -416,10 +417,11 @@ def do_patch_vscode_flow(vscode_path, vscode_agy_path, set_js_cb=None, set_agy_c
     # --- 1. Патчим extension.js ---
     do_patch_vscode(vscode_path)
 
-    # --- 2. Патчим бинарь ~/.gemini/bin/antigravity (agy-патчем) ---
+    # --- 2. 同时补丁资格页面和 hub 登录的 hasValidAuth 判断 ---
+    # 两个 gate 共用一次备份与写入，避免备份被中间状态覆盖。
     print()
     info(f"Found downloaded binary: {color(vscode_agy_path, COLOR_CYAN)}")
-    do_patch_agy(vscode_agy_path)
+    do_patch_agy(vscode_agy_path, extra_gates=VSCODE_AGY_EXTRA_GATES)
     return True
 
 

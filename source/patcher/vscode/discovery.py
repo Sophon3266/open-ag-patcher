@@ -1,11 +1,17 @@
+"""VS Code 扩展与 Antigravity 二进制的定位工具。
+
+统一处理不同发行版（稳定版、Insiders、OSS、remote-server）的扩展目录，
+并兼容通过 VSCODE_EXTENSIONS 环境变量覆盖扩展根目录的场景。
+"""
+
 import os
 import glob
 
 
 def _user_home():
-    """Домашний каталог пользователя. На POSIX при запуске через sudo
-    возвращает дом вызвавшего пользователя (~user), а не /root,
-    чтобы ~/.vscode-server и ~/.gemini находились корректно."""
+    """返回当前用户的主目录。POSIX 下通过 sudo 运行时，返回调用者
+    用户的主目录（~user）而非 /root，以保证 ~/.vscode-server 和
+    ~/.gemini 指向正确位置。"""
     if os.name == "posix":
         from patcher.utils.file import get_posix_invoking_user_home
         home = get_posix_invoking_user_home()
@@ -15,13 +21,13 @@ def _user_home():
 
 
 def clean_path(raw_path):
-    """Убирает кавычки/пробелы по краям — как в ide/agy discovery."""
+    """去掉首尾的引号和空白，与 ide/agy discovery 的处理保持一致。"""
     return raw_path.strip().strip('"').strip("'")
 
 
 def _extension_roots():
-    """Корневые каталоги расширений VS Code (обычный, Insiders, OSS, remote-server).
-    Первым идёт переопределение через env VSCODE_EXTENSIONS, если задано."""
+    """返回 VS Code 扩展的根目录列表（普通版、Insiders、OSS、remote-server）。
+    若设置了环境变量 VSCODE_EXTENSIONS，则其指定的目录排在首位。"""
     home = _user_home()
     roots = []
     env = os.environ.get("VSCODE_EXTENSIONS")
@@ -45,9 +51,9 @@ def _extension_roots():
 
 
 def find_extension_dir():
-    """Возвращает новейший каталог расширения google.google-antigravity-*.
-    Имя каталога версионированное (например google.google-antigravity-1.0.0),
-    поэтому ищем по маске и сортируем по mtime (новейший первым)."""
+    """返回最新的 google.google-antigravity-* 扩展目录。
+    目录名带版本号（例如 google.google-antigravity-1.0.0），
+    因此按通配符匹配后以 mtime 排序（最新者在前）。"""
     candidates = []
     for root in _extension_roots():
         candidates += glob.glob(
@@ -61,7 +67,7 @@ def find_extension_dir():
 
 
 def find_extension_js():
-    """Возвращает путь к extension.js расширения google.google-antigravity или ''."""
+    """返回 google.google-antigravity 扩展的 extension.js 路径，找不到时返回 ''。"""
     ext_dir = find_extension_dir()
     if not ext_dir:
         return ""
@@ -70,9 +76,9 @@ def find_extension_js():
 
 
 def resolve_extension_path(raw_path):
-    """Разрешает пользовательский путь к extension.js.
-    Принимает: сам файл extension.js, каталог расширения
-    (google.google-antigravity-*) или корневой каталог extensions."""
+    """解析用户给出的 extension.js 路径。
+    接受：extension.js 文件本身、扩展目录（google.google-antigravity-*）
+    或 extensions 根目录。"""
     if not raw_path:
         return ""
     cleaned = clean_path(raw_path)
@@ -83,15 +89,15 @@ def resolve_extension_path(raw_path):
     if os.path.isfile(resolved):
         if os.path.basename(resolved).lower() == "extension.js":
             return resolved
-        # Произвольный файл — принимаем как есть (пользователь лучше знает)
+        # 任意文件 —— 原样接受（用户更清楚自己在做什么）
         return resolved
 
     if os.path.isdir(resolved):
-        # Каталог самого расширения
+        # 扩展自身的目录
         direct = os.path.join(resolved, "extension.js")
         if os.path.isfile(direct):
             return direct
-        # Корневой каталог extensions — ищем внутри google.google-antigravity-*
+        # extensions 根目录 —— 在 google.google-antigravity-* 内查找
         hits = glob.glob(
             os.path.join(resolved, "google.google-antigravity-*", "extension.js")
         )
@@ -104,9 +110,9 @@ def resolve_extension_path(raw_path):
 
 
 def find_gemini_antigravity_binary():
-    """Бинарь, скачиваемый расширением в ~/.gemini/bin.
-    Windows: antigravity.exe / agy.exe, macOS/Linux: antigravity / agy.
-    Возвращает путь или ''. Используется ТОЛЬКО пунктом 'Antigravity VS Code Patch'."""
+    """返回扩展下载到 ~/.gemini/bin 的二进制文件。
+    Windows: antigravity.exe / agy.exe，macOS/Linux: antigravity / agy。
+    返回路径或 ''。仅供 'Antigravity VS Code Patch' 菜单项使用。"""
     home = _user_home()
     ext = ".exe" if os.name == "nt" else ""
     for name in ("antigravity", "agy"):
@@ -117,6 +123,6 @@ def find_gemini_antigravity_binary():
 
 
 def describe_gemini_binary_path():
-    """Человекочитаемый ожидаемый путь к бинарю (для сообщений)."""
+    """返回便于阅读的二进制预期路径（用于提示信息）。"""
     name = "antigravity.exe" if os.name == "nt" else "antigravity"
     return os.path.join("~", ".gemini", "bin", name)
