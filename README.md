@@ -14,6 +14,9 @@
 </div>
 
 # 🔑 Open AG Patcher
+
+**[中文说明（README.zh-CN.md）](README.zh-CN.md)**
+
 <p align="center">
   <a href="https://github.com/AvenCores/open-antigravity-patcher"><img src="https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54" alt="Python"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge" alt="GPL-3.0 License"></a>
@@ -328,7 +331,7 @@ Trajectory ID: d3ee4302-4213-40f9-9ac5-42e83e38a5ce
 - **Проверка обновлений** — автоматическая проверка новых версий при запуске и ручная проверка через меню (TOOLS → `9`).
 - **Патч Antigravity CLI** — снятие экрана «Eligibility Check» и обход проверки eligibility в Go-бинаре `agy`/`agy.exe` на уровне машинного кода по байтовой сигнатуре для архитектур x86-64 и ARM64 (с резервной копией и откатом).
 - **Патч Antigravity Manager (`language_server`)** — снятие проверки авторизации (`hasValidAuth=true`) в скомпилированном бинарнике бэкенда по байтовой сигнатуре для архитектур x86-64 и ARM64 (с резервной копией и откатом).
-- **Патч расширения Google Antigravity для VS Code** — инъекция guard'а от повторного скачивания бинаря в `extension.js` расширения `google.google-antigravity` + отключение проверки смены release-канала (`isChannelChanged -> false`), чтобы уже скачанный/пропатченный бинарь не перезаписывался. Дополнительно патчит скачанный бинарь `~/.gemini/bin/antigravity` agy-патчем.
+- **Патч расширения Google Antigravity для VS Code** — инъекция guard'а от повторного скачивания бинаря в `extension.js` расширения `google.google-antigravity` + отключение проверки смены release-канала (`isChannelChanged -> false`), чтобы уже скачанный/пропатченный бинарь не перезаписывался. Дополнительно за одну запись патчит в `~/.gemini/bin/agy` оба независимых gate: экран eligibility и `hasValidAuth` для входа в режиме `agy --hub`.
 - Поддержка Linux: поиск по `/usr/share/antigravity-ide`, определение версии через `dpkg`, `rpm` и `package.json`.
 - Поддержка macOS: поиск `.app`-бандла в `/Applications` и `~/Applications`, ad-hoc переподпись после изменения `main.js`.
 - Создание резервной копии перед изменениями.
@@ -351,7 +354,7 @@ Trajectory ID: d3ee4302-4213-40f9-9ac5-42e83e38a5ce
 | `1` Antigravity IDE patch | Применить патч к `main.js` для Antigravity IDE (bypass region lock) |
 | `2` Antigravity 2.0 patch | Применить патч к бинарному файлу `language_server` (Antigravity Manager) |
 | `3` Antigravity CLI (agy) patch | Применить патч к бинарю `agy`/`agy.exe` (unlock agy tool) |
-| `4` Antigravity VS Code Patch | Патч `extension.js` расширения `google.google-antigravity` + бинаря `~/.gemini/bin/antigravity` (требует установленный и запатченный Antigravity 2.0) |
+| `4` Antigravity VS Code Patch | Патч `extension.js` расширения `google.google-antigravity` + двух gate в `~/.gemini/bin/agy`: eligibility и `hasValidAuth` |
 | **RESTORE** | |
 | `5` Antigravity IDE | Восстановить оригинальный `main.js` для Antigravity IDE из бэкапа |
 | `6` Antigravity 2.0 | Восстановить оригинальный `language_server` из бэкапа |
@@ -523,13 +526,13 @@ Antigravity CLI — отдельный Go-бинарь (`agy.exe` на Windows, 
 
 ### Патч для расширения Google Antigravity (VS Code)
 
-> **⚠️ Важно:** для корректного патча VS Code расширения (`PATCH → 4`) нужен установленный и уже запатченный Antigravity 2.0 (`PATCH → 2` — патч `language_server`). Сначала установите Antigravity 2.0, примените к нему патч, и только потом патчите расширение `google.google-antigravity` в VS Code.
+> **⚠️ Важно:** используйте актуальную версию патчера и пункт `PATCH → 4`. Для VS Code недостаточно отдельно пропатчить CLI: этот пункт дополнительно применяет `hasValidAuth=true` к тому же `~/.gemini/bin/agy`, который запускается с флагом `--hub`. Если вход уже был пропатчен старой версией и завершается `ineligible`, повторите пункт `4` — новый auth-gate будет добавлен к существующему eligibility-патчу, а исходный `.agybak` сохранится.
 
 Расширение `google.google-antigravity` для VS Code при каждом запуске проверяет версию бэкенд-бинаря и перекачивает его с release-сервера Google. Патчер вносит два изменения в `extension.js` расширения:
 
 #### Part 1 — guard от повторного скачивания
 
-После строки `outputChannel.appendLine('[INSTALL] Checking Antigravity releases...')` инъектируется блок, который проверяет наличие уже скачанного бинаря (по `targetPathOverride` или в `~/.gemini/bin`) и, если он найден, **немедленно возвращает путь к нему**, пропуская проверку версии и повторное скачивание:
+После вызова `<receiver>.appendLine('[INSTALL] Checking Antigravity releases...')` инъектируется блок, который проверяет наличие уже скачанного бинаря и **немедленно возвращает его**, пропуская проверку версии и повторное скачивание. В старых неминифицированных сборках используются `targetPathOverride`, `getInstalledTargetPath()` и строковое возвращаемое значение:
 
 ```js
 {const __primary=options.targetPathOverride||getInstalledTargetPath();
@@ -539,26 +542,38 @@ for(const __p of __candidates){if(__p&&await pathExists(__p)){
 outputChannel.appendLine('[INSTALL] Existing binary found at '+__p+'. Skipping version check and re-download.');return __p;}}}
 ```
 
-Поиск точки вставки выполняется гибким regex'ом, который матчит **полный вызов** `outputChannel.appendLine('...');` — с учётом разных кавычек и пробелов, но строго до закрывающей скобки вызова, чтобы инъекция попала после него, а не внутрь.
+В минифицированных сборках (проверено на `1.12.0`) имена локальных переменных не используются: guard сам вычисляет путь `~/.gemini/bin/agy[.exe]` или `~/.gemini/bin/antigravity[.exe]` через `require('os')`, `require('path')` и `require('fs')`. Новый `action` должен вернуть объект, поэтому используется `return {installPath: __p, fellBackToExisting: false}` вместо старой строки.
+
+Поиск точки вставки выполняется по стабильному тексту `[INSTALL] Checking Antigravity releases...` и матчит **полный вызов** `appendLine('...')` с любым именем объекта-получателя — с учётом разных кавычек, пробелов и минификации, но строго до закрывающей скобки вызова, чтобы инъекция попала после него, а не внутрь.
 
 #### Part 2 — отключение проверки смены release-канала
 
 ```js
-// было:
+// старые сборки:
 const isChannelChanged = manifestFetched && lastInstalledUrl !== releaseBaseUrl;
 // стало:
 const isChannelChanged = false;
+
+// минифицированные сборки (имя dg меняется от версии к версии):
+let dg = existingBinaryValid && manifestFetched && channelChanged && !sameChecksum && !keepNewer;
+// стало:
+let dg = false;
 ```
 
-Без этого расширение считает release-канал изменённым и принудительно перекачивает бинарь, затирая пропатченный.
+Без этого расширение считает release-канал изменённым и принудительно перекачивает бинарь, затирая пропатченный. В минифицированном JS нужное присваивание находится по backreference на используемую переменную и соседнему логу `[INSTALL] Release channel change detected`, поэтому короткие имена переменных не влияют на поиск.
 
 #### Дополнительно — патч скачанного бинаря
 
-Сразу после патча `extension.js` патчер предлагает применить agy-патч (см. выше) к скачанному расширением бинарю `~/.gemini/bin/antigravity` (или `~/.gemini/bin/agy`) — он содержит ту же проверку eligibility.
+Сразу после патча `extension.js` патчер обрабатывает скачанный расширением бинарь `~/.gemini/bin/antigravity` (или `~/.gemini/bin/agy`) двумя машинными gate за одно сканирование и одну запись:
+
+1. **Eligibility screen off** — отключает локальный экран проверки eligibility.
+2. **`hasValidAuth=true`** — необходим для OAuth в режиме `agy --hub`: без него обмен кода проходит, но `loadCodeAssist` завершает вход с `failure_kind=ineligible`.
+
+Обычный пункт CLI (`PATCH → 3`) по-прежнему применяет только первый gate. Если файл уже частично пропатчен, существующий `.agybak` не перезаписывается промежуточным состоянием; новый gate добавляется к текущему бинарю.
 
 **Детали:**
 - Резервная копия: `extension.js.vscodebak` рядом с оригиналом; stale-бэкапы автоматически обновляются.
-- Обнаружение уже применённого патча по наличию инъекции и `const isChannelChanged = false;`.
+- Обнаружение уже применённого патча по наличию любой поддерживаемой инъекции и отключённой проверки канала (как старого `const isChannelChanged = false;`, так и минифицированного `let <id>=false;`).
 - Откат: **RESTORE → `8`** восстанавливает `extension.js` из `.vscodebak`, а также предлагает восстановить бинарь `~/.gemini/bin` из `.agybak`.
 - После патча требуется перезагрузка окна VS Code (**Developer: Reload Window**).
 - Поиск расширения: `~/.vscode/extensions`, `~/.vscode-insiders/extensions`, `~/.vscode-oss/extensions`, `~/.vscode-server/extensions`, `~/.vscode-server-insiders/extensions` (или каталог из env `VSCODE_EXTENSIONS`). При нескольких версиях выбирается самая свежая по mtime.
