@@ -43,6 +43,7 @@ python -m unittest discover -s test-agy -v
   false positive — так уже было, не возвращать.
 - Известные гейты (см. `source/patcher/agy/patcher.py`):
   - `CLI_GATE_X64` — `test rax,rax; je; cmp [rax+8],0; jne; call`, фикс `48 85 c0 90`.
+  - `CLI_GATE_X64_SCREEN` — CLI 1.5.12+, инлайн-проверка экрана через `rcx`; обязателен вместе с helper-гейтом, фикс `48 85 c9 90`.
   - `CLI_GATE_ARM64` — старые билды: `cbnz x1; cbz x0; ldrb w1,[x0,#8]; tbnz w1,#0`
     + хвост `bl` + spills (два варианта хвоста через `(?:...|...)`), фикс `21 00 80 52`.
   - `CLI_GATE_ARM64_W2` — CLI 1.2.7+, **главный гейт экрана** (инлайн в функции

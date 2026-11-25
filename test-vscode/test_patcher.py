@@ -34,6 +34,10 @@ return{installPath:"downloaded",fellBackToExisting:false};}})}
 CLI_GATE_ORIGINAL = bytes.fromhex(
     "48 85 c0 0f 84 00 00 00 00 80 78 08 00 0f 85 00 00 00 00"
 )
+CLI_SCREEN_ORIGINAL = bytes.fromhex(
+    "48 85 c0 0f 85 00 00 00 00 48 85 c9 0f 84 00 00 00 00 "
+    "80 79 08 00 0f 85 00 00 00 00 48 89 c8 90 e8 00 00 00 00"
+)
 AUTH_GATE_ORIGINAL = bytes.fromhex(
     "80 78 08 00 74 10 48 8b 04 24 20 48 89 44 60"
 )
@@ -69,6 +73,27 @@ class VsCodePatcherTests(unittest.TestCase):
         self.assertIn("const isChannelChanged = false;", patched)
         self.assertTrue(patcher.is_already_patched(patched))
         self.assertEqual(self.apply_patch(patched), (patched, "already", "already"))
+
+    def test_x64_inline_eligibility_gate_is_patched_with_helper(self):
+        # CLI 1.5.12 在调用 helper 前还有 rcx 内联检查，两处都必须修补。
+        data = bytearray(CLI_GATE_ORIGINAL + CLI_SCREEN_ORIGINAL)
+        matches = CLI_GATE.resolve_all(data)
+        self.assertEqual(len(matches), 2)
+
+        patches = []
+        for kind, offsets, gate in matches:
+            self.assertEqual(kind, "unpatched")
+            patches.extend((offset, gate) for offset in offsets)
+        patched = apply_patches_to_data(data, patches)
+
+        inline_offset = len(CLI_GATE_ORIGINAL) + 18
+        self.assertEqual(
+            patched[inline_offset:inline_offset + 4],
+            bytes.fromhex("48 85 c9 90"),
+        )
+        self.assertTrue(all(
+            kind == "patched" for kind, _offsets, _gate in CLI_GATE.resolve_all(patched)
+        ))
 
     def test_vscode_status_requires_both_binary_gates(self):
         # 仅修资格页面时，普通 CLI 状态会为 patched，但 VS Code 登录仍未修复。

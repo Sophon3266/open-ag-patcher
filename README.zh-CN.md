@@ -498,6 +498,7 @@ Antigravity CLI 是一个独立的 Go 二进制文件（Windows 上为 `agy.exe`
    call failure_builder       ; e8 xx xx xx xx      <-- BAD：构建错误
    ```
 2. 补丁程序将 `cmp byte ptr [rax+8], 0` 替换为 `test rax,rax` + `NOP`（`48 85 c0 90`）。由于此处的 `rax` 一定不为零，`jne` 跳转始终将执行引导到「eligible」分支。
+3. CLI 1.5.12 的界面函数还会在调用 helper 前通过 `rcx` 额外检查标志。单独的 gate `eligibility screen off (x64, inline)` 将 `cmp byte ptr [rcx+8],0` 替换为 `test rcx,rcx` + `NOP`（`48 85 c9 90`）。`MultiGate` 会修补这两处 x64 检查；如果缺少内联 gate，即使 helper 已打补丁，`Eligibility check failed:` 界面仍然会出现。
 
 ##### ARM64
 1. 在当前的本地 arm64 构建中，构建错误前的外部检查如下：

@@ -112,6 +112,20 @@ CLI_GATE_X64 = Gate(
     offset=9,
     desc="eligibility screen off (x64)",
 )
+# x64 (CLI 1.5.12+): инлайн-проверка в функции экрана использует rcx.
+# Без неё экран отклоняет аккаунт до вызова уже пропатченного helper'а:
+#   test rax,rax ; jne error ; test rcx,rcx ; je eligible
+#   cmp byte[rcx+8],0 ; jne eligible ; mov rax,rcx ; nop ; call failure_builder
+# Повторный test rcx,rcx сохраняет ZF=0, поэтому jne выбирает eligible.
+CLI_GATE_X64_SCREEN = Gate(
+    rb"\x48\x85\xc0\x0f\x85....\x48\x85\xc9\x0f\x84...."
+    rb"\x80\x79\x08\x00\x0f\x85....\x48\x89\xc8\x90\xe8",
+    rb"\x48\x85\xc0\x0f\x85....\x48\x85\xc9\x0f\x84...."
+    rb"\x48\x85\xc9\x90\x0f\x85....\x48\x89\xc8\x90\xe8",
+    b"\x48\x85\xc9\x90",
+    offset=18,
+    desc="eligibility screen off (x64, inline)",
+)
 # arm64:
 #   cbnz x1,error ; cbz x0,eligible ; ldrb w1,[x0,#8] ; tbnz w1,#0,eligible
 #   bl failure_builder + spills.
@@ -165,6 +179,7 @@ CLI_GATE_ARM64_W2 = Gate(
 
 CLI_GATE = MultiGate(
     CLI_GATE_X64,
+    CLI_GATE_X64_SCREEN,
     CLI_GATE_ARM64,
     CLI_GATE_ARM64_W2,
     CLI_GATE_ARM64_W4,

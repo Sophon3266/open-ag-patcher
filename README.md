@@ -498,6 +498,7 @@ Antigravity CLI — отдельный Go-бинарь (`agy.exe` на Windows, 
    call failure_builder       ; e8 xx xx xx xx      <-- BAD: построение ошибки
    ```
 2. Патчер заменяет `cmp byte ptr [rax+8], 0` на `test rax,rax` + `NOP` (`48 85 c0 90`). Так как `rax` здесь гарантированно не равен нулю, переход `jne` всегда уводит выполнение в ветку «eligible».
+3. В CLI 1.5.12 функция экрана дополнительно проверяет флаг через `rcx` до вызова helper'а. Отдельный гейт `eligibility screen off (x64, inline)` заменяет `cmp byte ptr [rcx+8],0` на `test rcx,rcx` + `NOP` (`48 85 c9 90`). `MultiGate` патчит обе x64-проверки; без инлайн-гейта экран `Eligibility check failed:` остаётся даже после патча helper'а.
 
 ##### ARM64
 1. В актуальных нативных arm64-сборках внешняя проверка перед построением ошибки выглядит как:
